@@ -1,0 +1,53 @@
+@import url("https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Heebo", ui-sans-serif, system-ui, sans-serif;
+  --color-paper: oklch(0.965 0.014 82);
+  --color-raised: oklch(0.985 0.008 82);
+  --color-band: oklch(0.935 0.02 78);
+  --color-ink: oklch(0.28 0.03 50);
+  --color-mute: oklch(0.46 0.024 52);
+  --color-line: oklch(0.88 0.02 75);
+  --color-accent: oklch(0.52 0.13 48);
+  --color-accent-deep: oklch(0.44 0.13 45);
+  --color-good: oklch(0.48 0.09 150);
+  --color-warn: oklch(0.62 0.11 75);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.sku {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-vis {
+  content-visibility: auto;
+  contain-intrinsic-size: 320px;
+}

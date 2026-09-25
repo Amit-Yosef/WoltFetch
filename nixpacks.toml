@@ -1,0 +1,7 @@
+[variables]
+NIXPACKS_NODE_VERSION = "20"
+NPM_CONFIG_PRODUCTION = "false"
+NODE_ENV = "production"
+
+[start]
+cmd = "node server/index.js"
