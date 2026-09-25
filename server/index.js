@@ -10,6 +10,7 @@ import { fetchWoltMenu } from "./wolt.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
+const MAX_PACKAGING_PHOTOS = 3;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 const upload = multer({
@@ -38,14 +39,24 @@ function cooldownRemainingMs(meta) {
   return Math.max(0, new Date(meta.cooldownUntil).getTime() - Date.now());
 }
 
+function groupPhotoSlots(summaries) {
+  const photoSlots = {};
+  for (const row of summaries) {
+    if (!photoSlots[row.itemId]) photoSlots[row.itemId] = [];
+    photoSlots[row.itemId].push({ slot: row.slot, updatedAt: row.updatedAt });
+  }
+  return photoSlots;
+}
+
 async function cachedPayload(cached, extra = {}) {
-  const photoItemIds = await db.listPhotoItemIds();
+  const photoSlots = groupPhotoSlots(await db.listPhotoSummaries());
   return {
     items: cached?.items || [],
     fetchedAt: cached?.fetchedAt || null,
     status: cached?.status || "READY",
     cached: Boolean(cached?.items?.length),
-    photoItemIds,
+    photoItemIds: Object.keys(photoSlots),
+    photoSlots,
     count: cached?.items?.length || 0,
     ...extra,
   };
@@ -142,8 +153,28 @@ app.get("/api/menu", async (req, res) => {
   }
 });
 
-app.get("/api/items/:id/photo", async (req, res) => {
-  const photo = await db.getPhoto(req.params.id);
+function parseSlot(raw) {
+  const slot = Number(raw);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_PACKAGING_PHOTOS) return null;
+  return slot;
+}
+
+async function nextFreeSlot(itemId) {
+  const photos = await db.listItemPhotos(itemId);
+  const used = new Set(photos.map((photo) => photo.slot));
+  for (let slot = 0; slot < MAX_PACKAGING_PHOTOS; slot += 1) {
+    if (!used.has(slot)) return slot;
+  }
+  return null;
+}
+
+async function sendPhoto(req, res) {
+  const slot = parseSlot(req.params.slot ?? 0);
+  if (slot === null) {
+    res.status(400).json({ error: "מספר תמונה לא תקין" });
+    return;
+  }
+  const photo = await db.getPhoto(req.params.id, slot);
   if (!photo) {
     res.status(404).json({ error: "אין תמונת אריזה לפריט זה" });
     return;
@@ -151,61 +182,102 @@ app.get("/api/items/:id/photo", async (req, res) => {
   res.setHeader("Content-Type", photo.mime_type);
   res.setHeader("Cache-Control", "private, max-age=60");
   res.send(photo.data);
+}
+
+function receivePhoto(resolveSlot) {
+  return (req, res) => {
+    upload.single("photo")(req, res, async (err) => {
+      if (err) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (!req.file) {
+        res.status(400).json({ error: "לא נבחרה תמונה" });
+        return;
+      }
+      try {
+        const slot = await resolveSlot(req);
+        if (slot === null) {
+          res.status(400).json({ error: "אפשר לשמור עד 3 תמונות אריזה לפריט" });
+          return;
+        }
+        if (slot === undefined) {
+          res.status(400).json({ error: "מספר תמונה לא תקין" });
+          return;
+        }
+        const saved = await db.savePhoto({
+          itemId: req.params.id,
+          slot,
+          sku: typeof req.body?.sku === "string" ? req.body.sku : null,
+          mimeType: req.file.mimetype,
+          originalName: req.file.originalname,
+          data: req.file.buffer,
+        });
+        const photos = await db.listItemPhotos(req.params.id);
+        const current = photos.find((photo) => photo.slot === slot);
+        res.json({
+          ok: true,
+          itemId: req.params.id,
+          slot,
+          photos,
+          storedIn: saved?.storedIn || db.driver,
+          bytes: current?.bytes ?? req.file.size,
+          mimeType: req.file.mimetype,
+          updatedAt: current?.updatedAt,
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "שמירת התמונה במסד נכשלה" });
+      }
+    });
+  };
+}
+
+app.get("/api/items/:id/photos", async (req, res) => {
+  const photos = await db.listItemPhotos(req.params.id);
+  res.json({ photos });
 });
 
-app.put("/api/items/:id/photo", (req, res) => {
-  upload.single("photo")(req, res, async (err) => {
-    if (err) {
-      res.status(400).json({ error: err.message });
-      return;
-    }
-    if (!req.file) {
-      res.status(400).json({ error: "לא נבחרה תמונה" });
-      return;
-    }
-    try {
-      const saved = await db.savePhoto({
-        itemId: req.params.id,
-        sku: typeof req.body?.sku === "string" ? req.body.sku : null,
-        mimeType: req.file.mimetype,
-        originalName: req.file.originalname,
-        data: req.file.buffer,
-      });
-      const meta = await db.getPhotoMeta(req.params.id);
-      res.json({
-        ok: true,
-        itemId: req.params.id,
-        storedIn: saved?.storedIn || db.driver,
-        bytes: meta?.bytes ?? req.file.size,
-        mimeType: req.file.mimetype,
-        updatedAt: meta?.updated_at,
-      });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "שמירת התמונה במסד נכשלה" });
-    }
-  });
-});
+app.get("/api/items/:id/photos/:slot", sendPhoto);
+app.get("/api/items/:id/photo", sendPhoto);
+
+app.put(
+  "/api/items/:id/photos",
+  receivePhoto(async (req) => nextFreeSlot(req.params.id))
+);
+app.put(
+  "/api/items/:id/photos/:slot",
+  receivePhoto(async (req) => {
+    const slot = parseSlot(req.params.slot);
+    return slot === null ? undefined : slot;
+  })
+);
+app.put(
+  "/api/items/:id/photo",
+  receivePhoto(async () => 0)
+);
 
 app.get("/api/items/:id/photo-meta", async (req, res) => {
-  const meta = await db.getPhotoMeta(req.params.id);
-  if (!meta) {
-    res.status(404).json({ exists: false });
+  const photos = await db.listItemPhotos(req.params.id);
+  if (!photos.length) {
+    res.status(404).json({ exists: false, photos: [] });
     return;
   }
-  res.json({
-    exists: true,
-    itemId: meta.item_id,
-    sku: meta.sku,
-    mimeType: meta.mime_type,
-    originalName: meta.original_name,
-    bytes: meta.bytes,
-    updatedAt: meta.updated_at,
-  });
+  res.json({ exists: true, itemId: req.params.id, photos });
+});
+
+app.delete("/api/items/:id/photos/:slot", async (req, res) => {
+  const slot = parseSlot(req.params.slot);
+  if (slot === null) {
+    res.status(400).json({ error: "מספר תמונה לא תקין" });
+    return;
+  }
+  await db.deletePhoto(req.params.id, slot);
+  res.json({ ok: true, photos: await db.listItemPhotos(req.params.id) });
 });
 
 app.delete("/api/items/:id/photo", async (req, res) => {
-  await db.deletePhoto(req.params.id);
-  res.json({ ok: true });
+  await db.deletePhoto(req.params.id, 0);
+  res.json({ ok: true, photos: await db.listItemPhotos(req.params.id) });
 });
 
 const distDir = path.join(__dirname, "..", "dist");

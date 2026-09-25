@@ -49,5 +49,11 @@ textarea {
 
 .card-vis {
   content-visibility: auto;
-  contain-intrinsic-size: 320px;
+  contain-intrinsic-size: auto 220px;
+}
+
+@media (min-width: 640px) {
+  .card-vis {
+    contain-intrinsic-size: auto 360px;
+  }
 }

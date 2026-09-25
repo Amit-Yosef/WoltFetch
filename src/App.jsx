@@ -5,6 +5,8 @@ import ItemPanel from "./components/ItemPanel.jsx";
 import { fetchMenu } from "./lib/api.js";
 
 const PAGE = 60;
+const cardGrid =
+  "grid grid-cols-2 gap-2 md:grid-cols-[repeat(auto-fill,minmax(200px,1fr))] md:gap-4";
 
 function matchesQuery(item, query) {
   if (!query) return true;
@@ -32,13 +34,7 @@ export default function App() {
     try {
       const data = await fetchMenu({ refresh });
       setItems(data.items || []);
-      setPhotoMap((current) => {
-        const next = {};
-        for (const id of data.photoItemIds || []) {
-          next[id] = current[id] || data.fetchedAt || true;
-        }
-        return next;
-      });
+      setPhotoMap(data.photoSlots || {});
       setMeta({
         count: data.count ?? data.items?.length ?? 0,
         fetchedAt: data.fetchedAt,
@@ -88,11 +84,11 @@ export default function App() {
   return (
     <div className="min-h-dvh bg-paper text-ink">
       <header className="sticky top-0 z-20 border-b border-line bg-band/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm text-mute">Home and More</p>
-              <h1 className="text-2xl font-semibold tracking-tight">תמונות אריזה</h1>
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">תמונות אריזה</h1>
             </div>
             <div className="flex items-center gap-3 text-sm text-mute">
               <span>
@@ -102,7 +98,7 @@ export default function App() {
                 type="button"
                 onClick={() => load({ refresh: true })}
                 disabled={refreshing || Boolean(warning)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-line bg-raised px-3 py-1.5 text-ink hover:border-accent/50 disabled:opacity-60"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-line bg-raised px-3 py-2 text-ink hover:border-accent/50 disabled:opacity-60"
               >
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                 סנכרון וולט
@@ -117,15 +113,15 @@ export default function App() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="חיפוש לפי שם או מק״ט"
-              className="w-full rounded-2xl border border-line bg-raised py-3.5 pe-4 ps-12 text-base outline-none placeholder:text-mute/80"
+              className="w-full rounded-2xl border border-line bg-raised py-3 pe-4 ps-12 text-base outline-none placeholder:text-mute/80 sm:py-3.5"
             />
           </label>
         </div>
       </header>
 
       <div className="mx-auto flex max-w-[1400px]">
-        <main className="min-w-0 flex-1 px-4 py-5 sm:px-6">
-          <div className="mb-5 flex flex-wrap items-center gap-2">
+        <main className="min-w-0 flex-1 px-3 py-3 sm:px-6 sm:py-5">
+          <div className="mb-3 flex flex-wrap items-center gap-2 sm:mb-5">
             {[
               ["all", "הכל"],
               ["without", "בלי תמונת אריזה"],
@@ -135,7 +131,7 @@ export default function App() {
                 key={id}
                 type="button"
                 onClick={() => setFilter(id)}
-                className={`rounded-full px-3 py-1.5 text-sm ${
+                className={`min-h-10 rounded-full px-3 py-2 text-sm ${
                   filter === id ? "bg-accent text-raised" : "bg-raised text-mute hover:text-ink"
                 }`}
               >
@@ -153,12 +149,12 @@ export default function App() {
           ) : null}
 
           {loading ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+            <div className={cardGrid}>
               {Array.from({ length: 12 }).map((_, index) => (
-                <div key={index} className="overflow-hidden rounded-2xl border border-line bg-raised">
-                  <div className="aspect-[4/5] animate-pulse bg-band" />
-                  <div className="space-y-2 p-3.5">
-                    <div className="h-4 w-4/5 animate-pulse rounded bg-band" />
+                <div key={index} className="overflow-hidden rounded-xl border border-line bg-raised sm:rounded-2xl">
+                  <div className="aspect-square animate-pulse bg-band sm:aspect-[4/5]" />
+                  <div className="space-y-2 p-2 sm:p-3.5">
+                    <div className="h-3.5 w-4/5 animate-pulse rounded bg-band sm:h-4" />
                     <div className="h-3 w-1/3 animate-pulse rounded bg-band" />
                   </div>
                 </div>
@@ -177,17 +173,17 @@ export default function App() {
             </div>
           ) : (
             <>
-              <p className="mb-4 text-sm text-mute">
+              <p className="mb-3 text-sm text-mute sm:mb-4">
                 {filtered.length === items.length
                   ? `${filtered.length} פריטים`
                   : `${filtered.length} מתוך ${items.length}`}
               </p>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+              <div className={cardGrid}>
                 {shown.map((item) => (
                   <ItemCard
                     key={item.id}
                     item={item}
-                    hasPhoto={Boolean(photoMap[item.id])}
+                    photoCount={photoMap[item.id]?.length || 0}
                     selected={item.id === selectedId}
                     onSelect={(next) => setSelectedId(next.id)}
                   />
@@ -219,13 +215,12 @@ export default function App() {
             <div className="fixed inset-y-0 start-0 z-40 w-full max-w-[28rem] shadow-2xl lg:sticky lg:top-[8.75rem] lg:order-first lg:z-0 lg:h-[calc(100dvh-8.75rem)] lg:max-w-[28rem] lg:shadow-none">
               <ItemPanel
                 item={selected}
-                hasPhoto={Boolean(photoMap[selected.id])}
-                photoStamp={photoMap[selected.id]}
+                photos={photoMap[selected.id] || []}
                 onClose={() => setSelectedId(null)}
-                onPhotoChange={(id, stamp) => {
+                onPhotoChange={(id, photos) => {
                   setPhotoMap((current) => {
                     const next = { ...current };
-                    if (stamp) next[id] = stamp;
+                    if (photos?.length) next[id] = photos;
                     else delete next[id];
                     return next;
                   });

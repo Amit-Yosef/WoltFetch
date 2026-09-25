@@ -11,16 +11,22 @@ export async function fetchMenu({ refresh = false } = {}) {
   return body;
 }
 
-export function packagingPhotoUrl(itemId, updatedAt) {
-  const stamp = updatedAt ? `?t=${encodeURIComponent(String(updatedAt))}` : `?t=${Date.now()}`;
-  return `/api/items/${encodeURIComponent(itemId)}/photo${stamp}`;
+export const MAX_PACKAGING_PHOTOS = 3;
+
+export function packagingPhotoUrl(itemId, slot, updatedAt) {
+  const stamp = updatedAt ? `?t=${encodeURIComponent(String(updatedAt))}` : "";
+  return `/api/items/${encodeURIComponent(itemId)}/photos/${slot}${stamp}`;
 }
 
-export async function uploadPackagingPhoto(itemId, file, sku) {
+export async function uploadPackagingPhoto(itemId, file, sku, slot) {
   const data = new FormData();
   data.append("photo", file);
   if (sku) data.append("sku", sku);
-  const response = await fetch(`/api/items/${encodeURIComponent(itemId)}/photo`, {
+  const path =
+    slot === undefined || slot === null
+      ? `/api/items/${encodeURIComponent(itemId)}/photos`
+      : `/api/items/${encodeURIComponent(itemId)}/photos/${slot}`;
+  const response = await fetch(path, {
     method: "PUT",
     body: data,
   });
@@ -31,8 +37,8 @@ export async function uploadPackagingPhoto(itemId, file, sku) {
   return body;
 }
 
-export async function deletePackagingPhoto(itemId) {
-  const response = await fetch(`/api/items/${encodeURIComponent(itemId)}/photo`, {
+export async function deletePackagingPhoto(itemId, slot) {
+  const response = await fetch(`/api/items/${encodeURIComponent(itemId)}/photos/${slot}`, {
     method: "DELETE",
   });
   const body = await response.json().catch(() => ({}));
