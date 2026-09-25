@@ -46,7 +46,7 @@ NODE_ENV=production
 5. ב־GitHub: Settings → Secrets and variables → Actions, הוסיפו:
 
 - `RAILWAY_TOKEN` (חובה, Project Token)
-- `RAILWAY_SERVICE` (חובה אם יש גם Postgres): **שם השירות מהקנבס**, למשל `woltfetch`. לא מזהה UUID מהכתובת, ולא `Postgres`.
+- `RAILWAY_SERVICE`: `WoltFetch` (the GitHub-connected canvas block, not Postgres and not a UUID)
 
 6. דחיפה ל־`main` מריצה build ואז `railway up` ל־Railway.
 
