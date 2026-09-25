@@ -1,11 +1,77 @@
-import { useRef, useState } from "react";
-import { ImageOff, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ImageOff, Maximize2, Upload, X } from "lucide-react";
 import {
   MAX_PACKAGING_PHOTOS,
   deletePackagingPhoto,
   packagingPhotoUrl,
   uploadPackagingPhoto,
 } from "../lib/api.js";
+import PhotoViewer from "./PhotoViewer.jsx";
+
+function DeleteConfirm({ label, busy, onCancel, onConfirm }) {
+  const cancelRef = useRef(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    cancelRef.current?.focus();
+    function onKey(event) {
+      if (event.key === "Escape") onCancelRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+      onClick={() => {
+        if (!busy) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-photo-title"
+        className="w-full max-w-sm rounded-2xl border border-line bg-raised p-5 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h3 id="delete-photo-title" className="text-lg font-semibold">
+          למחוק את התמונה?
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed text-mute">
+          {label} תימחק מהשרת. אי אפשר לשחזר אותה.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-raised hover:bg-accent-deep disabled:opacity-60"
+          >
+            מחיקה
+          </button>
+          <button
+            ref={cancelRef}
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-full bg-band px-4 py-2.5 text-sm font-medium text-ink hover:bg-line disabled:opacity-60"
+          >
+            ביטול
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function PhotoFrame({ label, children, className = "" }) {
   return (
@@ -22,6 +88,8 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [viewer, setViewer] = useState(null);
+  const [confirmSlot, setConfirmSlot] = useState(null);
 
   if (!item) return null;
 
@@ -34,9 +102,8 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
     inputRef.current?.click();
   }
 
-  async function saveFile(file) {
+  async function saveFile(file, slot = slotTarget.current) {
     if (!file) return;
-    const slot = slotTarget.current;
     slotTarget.current = null;
     setBusy(true);
     setError("");
@@ -82,14 +149,29 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
 
       <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
         <PhotoFrame label="תמונת וולט">
-          <div className="aspect-[4/3] sm:aspect-[5/4]">
+          <div className="relative aspect-[4/3] sm:aspect-[5/4]">
             {item.imageUrl ? (
-              <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setViewer({ type: "wolt" });
+                }}
+                className="h-full w-full cursor-zoom-in"
+                aria-label={`הצגת תמונת וולט של ${item.name} במסך מלא`}
+              >
+                <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+              </button>
             ) : (
               <div className="flex h-full items-center justify-center text-mute">
                 <ImageOff size={28} />
               </div>
             )}
+            {item.imageUrl ? (
+              <span className="pointer-events-none absolute end-2 bottom-2 inline-flex size-8 items-center justify-center rounded-full bg-ink/70 text-raised">
+                <Maximize2 size={15} />
+              </span>
+            ) : null}
           </div>
         </PhotoFrame>
 
@@ -110,9 +192,12 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => chooseFile(slot)}
-                        className="h-full w-full disabled:opacity-60"
-                        aria-label={`החלפת תמונת אריזה ${slot + 1}`}
+                        onClick={() => {
+                          setError("");
+                          setViewer({ type: "pack", slot });
+                        }}
+                        className="h-full w-full cursor-zoom-in disabled:opacity-60"
+                        aria-label={`הצגת תמונת אריזה ${slot + 1} במסך מלא`}
                       >
                         <img
                           src={packagingPhotoUrl(item.id, slot, photo.updatedAt)}
@@ -123,7 +208,7 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => removePhoto(slot)}
+                        onClick={() => setConfirmSlot(slot)}
                         className="absolute end-1 top-1 inline-flex size-8 items-center justify-center rounded-full bg-ink/75 text-raised disabled:opacity-60"
                         aria-label={`הסרת תמונת אריזה ${slot + 1}`}
                       >
@@ -189,7 +274,7 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
           </button>
           <p className="mt-2 text-xs text-mute">
             {full
-              ? "יש 3 תמונות. לחצו על תמונה כדי להחליף, או הסירו אחת."
+              ? "יש 3 תמונות. פתחו תמונה כדי להחליף, או הסירו אחת."
               : "JPEG, PNG, WebP או GIF עד 8MB. עד 3 תמונות."}
           </p>
         </div>
@@ -202,6 +287,38 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
           <p className="mt-6 text-sm text-mute">{item.categories.join(" · ")}</p>
         ) : null}
       </div>
+      {confirmSlot !== null ? (
+        <DeleteConfirm
+          label={`תמונת אריזה ${confirmSlot + 1}`}
+          busy={busy}
+          onCancel={() => {
+            if (!busy) setConfirmSlot(null);
+          }}
+          onConfirm={async () => {
+            await removePhoto(confirmSlot);
+            setConfirmSlot(null);
+          }}
+        />
+      ) : null}
+      {viewer?.type === "wolt" && item.imageUrl ? (
+        <PhotoViewer
+          src={item.imageUrl}
+          alt={item.name}
+          caption="תמונת וולט"
+          onClose={() => setViewer(null)}
+        />
+      ) : null}
+      {viewer?.type === "pack" && bySlot.get(viewer.slot) ? (
+        <PhotoViewer
+          src={packagingPhotoUrl(item.id, viewer.slot, bySlot.get(viewer.slot).updatedAt)}
+          alt={`אריזה ${viewer.slot + 1} של ${item.name}`}
+          caption={`תמונת אריזה ${viewer.slot + 1}`}
+          busy={busy}
+          error={error}
+          onClose={() => setViewer(null)}
+          onReplace={(file) => saveFile(file, viewer.slot)}
+        />
+      ) : null}
     </aside>
   );
 }
