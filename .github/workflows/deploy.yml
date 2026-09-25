@@ -32,15 +32,5 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_SERVICE: ${{ secrets.RAILWAY_SERVICE }}
-        run: |
-          set -euo pipefail
-          if [ -z "${RAILWAY_TOKEN:-}" ]; then
-            echo "Missing RAILWAY_TOKEN GitHub secret."
-            echo "Create a project token in Railway → Project Settings → Tokens."
-            exit 1
-          fi
-          if [ -n "${RAILWAY_SERVICE:-}" ]; then
-            railway up --detach --service "$RAILWAY_SERVICE"
-          else
-            railway up --detach
-          fi
+          RAILWAY_ENVIRONMENT: ${{ secrets.RAILWAY_ENVIRONMENT }}
+        run: bash scripts/railway-deploy.sh

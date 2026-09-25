@@ -45,8 +45,8 @@ NODE_ENV=production
 
 5. ב־GitHub: Settings → Secrets and variables → Actions, הוסיפו:
 
-- `RAILWAY_TOKEN` (חובה)
-- `RAILWAY_SERVICE` (אופציונלי: שם השירות אם יש יותר מאחד בפרויקט)
+- `RAILWAY_TOKEN` (חובה, Project Token)
+- `RAILWAY_SERVICE` (חובה אם יש גם Postgres): **שם השירות מהקנבס**, למשל `woltfetch`. לא מזהה UUID מהכתובת, ולא `Postgres`.
 
 6. דחיפה ל־`main` מריצה build ואז `railway up` ל־Railway.
 
