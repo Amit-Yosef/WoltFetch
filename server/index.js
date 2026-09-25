@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "cors";
@@ -169,13 +170,34 @@ app.delete("/api/items/:id/photo", async (req, res) => {
 });
 
 const distDir = path.join(__dirname, "..", "dist");
-if (process.env.NODE_ENV === "production") {
+const indexHtml = path.join(distDir, "index.html");
+const hasFrontend = fs.existsSync(indexHtml);
+
+if (hasFrontend) {
   app.use(express.static(distDir));
-  app.get("/{*splat}", (_req, res) => {
-    res.sendFile(path.join(distDir, "index.html"));
+  app.get("/", (_req, res) => {
+    res.sendFile(indexHtml);
+  });
+  app.get("/{*path}", (req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      next();
+      return;
+    }
+    res.sendFile(indexHtml);
+  });
+} else {
+  app.get("/", (_req, res) => {
+    res
+      .status(503)
+      .type("html")
+      .send(
+        "<!doctype html><meta charset='utf-8'><body dir='rtl' lang='he'><p>השרת רץ, אבל קבצי הממשק לא נבנו. צריך <code>npm run build</code> לפני העלאה.</p></body>"
+      );
   });
 }
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`WoltFetch API listening on ${PORT} (${db.driver})`);
+  console.log(
+    `WoltFetch listening on ${PORT} (${db.driver})${hasFrontend ? ", frontend=dist" : ", frontend missing"}`
+  );
 });
