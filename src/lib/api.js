@@ -2,8 +2,11 @@ export async function fetchMenu({ refresh = false } = {}) {
   const url = refresh ? "/api/menu?refresh=1" : "/api/menu";
   const response = await fetch(url);
   const body = await response.json().catch(() => ({}));
-  if (!response.ok && response.status !== 202) {
-    throw new Error(body.error || "טעינת התפריט נכשלה");
+  if (Array.isArray(body.items)) {
+    return body;
+  }
+  if (!response.ok) {
+    throw new Error(body.error || body.warning || "טעינת התפריט נכשלה");
   }
   return body;
 }

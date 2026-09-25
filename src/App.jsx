@@ -43,6 +43,7 @@ export default function App() {
         count: data.count ?? data.items?.length ?? 0,
         fetchedAt: data.fetchedAt,
         cached: data.cached,
+        retryAfterSeconds: data.retryAfterSeconds || 0,
       });
       setWarning(data.warning || "");
     } catch (err) {
@@ -56,6 +57,14 @@ export default function App() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (items.length > 0 || error) return;
+    const delay = Math.max((meta?.retryAfterSeconds || 0) * 1000, warning ? 15_000 : 0);
+    if (!delay) return;
+    const timer = setTimeout(() => load(), delay);
+    return () => clearTimeout(timer);
+  }, [items.length, error, warning, meta?.retryAfterSeconds]);
 
   useEffect(() => {
     setVisible(PAGE);
@@ -92,7 +101,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => load({ refresh: true })}
-                disabled={refreshing}
+                disabled={refreshing || Boolean(warning)}
                 className="inline-flex items-center gap-1.5 rounded-full border border-line bg-raised px-3 py-1.5 text-ink hover:border-accent/50 disabled:opacity-60"
               >
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
@@ -157,8 +166,14 @@ export default function App() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-line bg-raised px-6 py-16 text-center">
-              <p className="text-lg font-medium">לא נמצאו פריטים</p>
-              <p className="mt-2 text-sm text-mute">נסו שם אחר או מק״ט מדויק מהמלאי.</p>
+              <p className="text-lg font-medium">
+                {warning || error ? "התפריט עדיין לא נטען מוולט" : "לא נמצאו פריטים"}
+              </p>
+              <p className="mt-2 text-sm text-mute">
+                {warning || error
+                  ? "וולט מאפשר משיכה אחת לכמה דקות. ממתינים אוטומטית ואז טוענים שוב."
+                  : "נסו שם אחר או מק״ט מדויק מהמלאי."}
+              </p>
             </div>
           ) : (
             <>

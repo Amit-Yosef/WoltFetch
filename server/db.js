@@ -69,6 +69,12 @@ async function createPostgres(databaseUrl) {
       fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       status TEXT
     );
+    CREATE TABLE IF NOT EXISTS wolt_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      cooldown_until TIMESTAMPTZ,
+      last_error TEXT,
+      last_attempt_at TIMESTAMPTZ
+    );
   `);
 
   await pool.query(`
@@ -138,6 +144,29 @@ async function createPostgres(databaseUrl) {
         [JSON.stringify(items), status ?? "READY"]
       );
     },
+    async getWoltMeta() {
+      const { rows } = await pool.query(
+        "SELECT cooldown_until, last_error, last_attempt_at FROM wolt_meta WHERE id = 1"
+      );
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        cooldownUntil: row.cooldown_until,
+        lastError: row.last_error,
+        lastAttemptAt: row.last_attempt_at,
+      };
+    },
+    async saveWoltMeta({ cooldownUntil, lastError }) {
+      await pool.query(
+        `INSERT INTO wolt_meta (id, cooldown_until, last_error, last_attempt_at)
+         VALUES (1, $1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           cooldown_until = EXCLUDED.cooldown_until,
+           last_error = EXCLUDED.last_error,
+           last_attempt_at = NOW()`,
+        [cooldownUntil ?? null, lastError ?? null]
+      );
+    },
   };
 }
 
@@ -168,6 +197,12 @@ async function createSqlite() {
       payload TEXT NOT NULL,
       fetched_at TEXT NOT NULL,
       status TEXT
+    );
+    CREATE TABLE IF NOT EXISTS wolt_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      cooldown_until TEXT,
+      last_error TEXT,
+      last_attempt_at TEXT
     );
   `);
 
@@ -202,6 +237,17 @@ async function createSqlite() {
       payload = excluded.payload,
       fetched_at = excluded.fetched_at,
       status = excluded.status
+  `);
+  const getWoltMetaStmt = db.prepare(
+    "SELECT cooldown_until, last_error, last_attempt_at FROM wolt_meta WHERE id = 1"
+  );
+  const upsertWoltMetaStmt = db.prepare(`
+    INSERT INTO wolt_meta (id, cooldown_until, last_error, last_attempt_at)
+    VALUES (1, @cooldown_until, @last_error, @last_attempt_at)
+    ON CONFLICT(id) DO UPDATE SET
+      cooldown_until = excluded.cooldown_until,
+      last_error = excluded.last_error,
+      last_attempt_at = excluded.last_attempt_at
   `);
 
   return {
@@ -248,6 +294,22 @@ async function createSqlite() {
         payload: JSON.stringify(items),
         fetched_at: nowIso(),
         status: status ?? "READY",
+      });
+    },
+    async getWoltMeta() {
+      const row = getWoltMetaStmt.get();
+      if (!row) return null;
+      return {
+        cooldownUntil: row.cooldown_until,
+        lastError: row.last_error,
+        lastAttemptAt: row.last_attempt_at,
+      };
+    },
+    async saveWoltMeta({ cooldownUntil, lastError }) {
+      upsertWoltMetaStmt.run({
+        cooldown_until: cooldownUntil ?? null,
+        last_error: lastError ?? null,
+        last_attempt_at: nowIso(),
       });
     },
   };

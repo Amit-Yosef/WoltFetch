@@ -66,6 +66,23 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function cooldownFromHeaders(response) {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter && /^\d+(\.\d+)?$/.test(retryAfter.trim())) {
+    return Math.max(60_000, Number(retryAfter) * 1000);
+  }
+  const reset = response.headers.get("ratelimit-reset");
+  if (reset && /^\d+$/.test(reset)) {
+    const value = Number(reset);
+    const resetAt = value > 1e12 ? value : value * 1000;
+    const wait = resetAt - Date.now();
+    if (wait > 0 && wait < 24 * 60 * 60 * 1000) {
+      return Math.max(60_000, wait);
+    }
+  }
+  return 120_000;
+}
+
 async function pollResourceUrl(resourceUrl) {
   let last = null;
   for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
@@ -108,9 +125,10 @@ export async function fetchWoltMenu({ force = false } = {}) {
   const { response, body } = await fetchJson(url, { headers });
 
   if (response.status === 429) {
-    const error = new Error("וולט הגביל את קצב המשיכות. משתמשים במטמון אם קיים.");
+    const error = new Error("וולט מגביל את קצב משיכת התפריט. נסו שוב בעוד דקה-שתיים.");
     error.code = "RATE_LIMITED";
     error.statusCode = 429;
+    error.retryAfterMs = cooldownFromHeaders(response);
     throw error;
   }
 
