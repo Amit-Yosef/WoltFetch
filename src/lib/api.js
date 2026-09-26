@@ -37,6 +37,19 @@ export async function uploadPackagingPhoto(itemId, file, sku, slot) {
   return body;
 }
 
+export async function saveItemNote(itemId, text, sku) {
+  const response = await fetch(`/api/items/${encodeURIComponent(itemId)}/note`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, sku: sku || "" }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || "שמירת ההערה נכשלה");
+  }
+  return body;
+}
+
 export async function deletePackagingPhoto(itemId, slot) {
   const response = await fetch(`/api/items/${encodeURIComponent(itemId)}/photos/${slot}`, {
     method: "DELETE",

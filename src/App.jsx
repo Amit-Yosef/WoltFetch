@@ -17,6 +17,7 @@ function matchesQuery(item, query) {
 export default function App() {
   const [items, setItems] = useState([]);
   const [photoMap, setPhotoMap] = useState({});
+  const [noteMap, setNoteMap] = useState({});
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
@@ -35,6 +36,7 @@ export default function App() {
       const data = await fetchMenu({ refresh });
       setItems(data.items || []);
       setPhotoMap(data.photoSlots || {});
+      setNoteMap(data.notes || {});
       setMeta({
         count: data.count ?? data.items?.length ?? 0,
         fetchedAt: data.fetchedAt,
@@ -216,7 +218,16 @@ export default function App() {
               <ItemPanel
                 item={selected}
                 photos={photoMap[selected.id] || []}
+                note={noteMap[selected.id] || ""}
                 onClose={() => setSelectedId(null)}
+                onNoteChange={(id, text) => {
+                  setNoteMap((current) => {
+                    const next = { ...current };
+                    if (text) next[id] = text;
+                    else delete next[id];
+                    return next;
+                  });
+                }}
                 onPhotoChange={(id, photos) => {
                   setPhotoMap((current) => {
                     const next = { ...current };

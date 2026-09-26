@@ -164,6 +164,12 @@ async function createPostgres(databaseUrl) {
       last_error TEXT,
       last_attempt_at TIMESTAMPTZ
     );
+    CREATE TABLE IF NOT EXISTS item_notes (
+      item_id TEXT PRIMARY KEY,
+      sku TEXT,
+      body TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   await pool.query(`
@@ -223,6 +229,24 @@ async function createPostgres(databaseUrl) {
         slot: row.slot,
         updatedAt: row.updated_at,
       }));
+    },
+    async listNotes() {
+      const { rows } = await pool.query("SELECT item_id, body FROM item_notes");
+      return rows.map((row) => ({ itemId: row.item_id, body: row.body }));
+    },
+    async saveNote({ itemId, sku, body }) {
+      await pool.query(
+        `INSERT INTO item_notes (item_id, sku, body, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (item_id) DO UPDATE SET
+           sku = EXCLUDED.sku,
+           body = EXCLUDED.body,
+           updated_at = NOW()`,
+        [itemId, sku ?? null, body]
+      );
+    },
+    async deleteNote(itemId) {
+      await pool.query("DELETE FROM item_notes WHERE item_id = $1", [itemId]);
     },
     async getMenuCache() {
       const { rows } = await pool.query(
@@ -309,6 +333,12 @@ async function createSqlite() {
       last_error TEXT,
       last_attempt_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS item_notes (
+      item_id TEXT PRIMARY KEY,
+      sku TEXT,
+      body TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   const columns = db.prepare("PRAGMA table_info(packaging_photos)").all();
@@ -337,6 +367,16 @@ async function createSqlite() {
   const listSummariesStmt = db.prepare(
     "SELECT item_id, slot, updated_at FROM packaging_photos ORDER BY item_id, slot"
   );
+  const listNotesStmt = db.prepare("SELECT item_id, body FROM item_notes");
+  const upsertNoteStmt = db.prepare(`
+    INSERT INTO item_notes (item_id, sku, body, updated_at)
+    VALUES (@item_id, @sku, @body, @updated_at)
+    ON CONFLICT(item_id) DO UPDATE SET
+      sku = excluded.sku,
+      body = excluded.body,
+      updated_at = excluded.updated_at
+  `);
+  const deleteNoteStmt = db.prepare("DELETE FROM item_notes WHERE item_id = ?");
   const getMenuStmt = db.prepare("SELECT payload, fetched_at, status FROM menu_cache WHERE id = 1");
   const upsertMenuStmt = db.prepare(`
     INSERT INTO menu_cache (id, payload, fetched_at, status)
@@ -392,6 +432,20 @@ async function createSqlite() {
         slot: row.slot,
         updatedAt: row.updated_at,
       }));
+    },
+    async listNotes() {
+      return listNotesStmt.all().map((row) => ({ itemId: row.item_id, body: row.body }));
+    },
+    async saveNote({ itemId, sku, body }) {
+      upsertNoteStmt.run({
+        item_id: itemId,
+        sku: sku ?? null,
+        body,
+        updated_at: nowIso(),
+      });
+    },
+    async deleteNote(itemId) {
+      deleteNoteStmt.run(itemId);
     },
     async getMenuCache() {
       const row = getMenuStmt.get();

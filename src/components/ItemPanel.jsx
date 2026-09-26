@@ -5,8 +5,10 @@ import {
   MAX_PACKAGING_PHOTOS,
   deletePackagingPhoto,
   packagingPhotoUrl,
+  saveItemNote,
   uploadPackagingPhoto,
 } from "../lib/api.js";
+import { MAX_NOTE_WORDS, clampNote, countWords } from "../lib/notes.js";
 import PhotoViewer from "./PhotoViewer.jsx";
 
 function DeleteConfirm({ label, busy, onCancel, onConfirm }) {
@@ -73,6 +75,92 @@ function DeleteConfirm({ label, busy, onCancel, onConfirm }) {
   );
 }
 
+function ItemNote({ itemId, sku, value, onSaved }) {
+  const [text, setText] = useState(value || "");
+  const [saved, setSaved] = useState(value || "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const textRef = useRef(text);
+  const savedRef = useRef(saved);
+  const onSavedRef = useRef(onSaved);
+  textRef.current = text;
+  savedRef.current = saved;
+  onSavedRef.current = onSaved;
+
+  useEffect(() => {
+    return () => {
+      const current = textRef.current;
+      if (current === savedRef.current) return;
+      saveItemNote(itemId, current, sku)
+        .then((result) => onSavedRef.current?.(itemId, result.text))
+        .catch(() => {});
+    };
+  }, [itemId, sku]);
+
+  async function persist(next = textRef.current) {
+    if (next === savedRef.current || busy) return true;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await saveItemNote(itemId, next, sku);
+      setText(result.text);
+      setSaved(result.text);
+      textRef.current = result.text;
+      savedRef.current = result.text;
+      onSaved(itemId, result.text);
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const words = countWords(text);
+  const dirty = text !== saved;
+
+  return (
+    <div className="mt-6">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <label htmlFor="item-note" className="text-sm font-medium text-mute">
+          הערה
+        </label>
+        <span className={`text-xs ${words >= MAX_NOTE_WORDS ? "text-accent" : "text-mute"}`}>
+          {words}/{MAX_NOTE_WORDS}
+          {dirty ? "" : saved ? " · נשמר" : ""}
+        </span>
+      </div>
+      <textarea
+        id="item-note"
+        value={text}
+        rows={4}
+        onChange={(event) => {
+          setText(clampNote(event.target.value));
+          setError("");
+        }}
+        onBlur={() => {
+          persist();
+        }}
+        placeholder="הערה חופשית על הפריט"
+        className="w-full resize-y rounded-2xl border border-line bg-paper px-3 py-3 text-base leading-relaxed outline-none placeholder:text-mute/80"
+      />
+      <p className="mt-2 text-xs leading-relaxed text-mute">עד 200 מילים. נשמר בשרת המקומי בלבד.</p>
+      <button
+        type="button"
+        disabled={!dirty || busy}
+        onClick={() => persist()}
+        className="mt-3 inline-flex min-h-11 items-center rounded-full bg-accent px-4 py-2.5 text-sm font-medium text-raised hover:bg-accent-deep disabled:opacity-60"
+      >
+        שמירת הערה
+      </button>
+      {error ? (
+        <p className="mt-3 rounded-xl bg-warn/15 px-3 py-2 text-sm text-accent-deep">{error}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function PhotoFrame({ label, children, className = "" }) {
   return (
     <figure className={`min-w-0 ${className}`}>
@@ -82,7 +170,7 @@ function PhotoFrame({ label, children, className = "" }) {
   );
 }
 
-export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
+export default function ItemPanel({ item, photos, note, onClose, onPhotoChange, onNoteChange }) {
   const inputRef = useRef(null);
   const slotTarget = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -282,6 +370,14 @@ export default function ItemPanel({ item, photos, onClose, onPhotoChange }) {
         {error ? (
           <p className="mt-3 rounded-xl bg-warn/15 px-3 py-2 text-sm text-accent-deep">{error}</p>
         ) : null}
+
+        <ItemNote
+          key={item.id}
+          itemId={item.id}
+          sku={item.sku}
+          value={note}
+          onSaved={onNoteChange}
+        />
 
         {item.categories?.length ? (
           <p className="mt-6 text-sm text-mute">{item.categories.join(" · ")}</p>

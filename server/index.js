@@ -7,6 +7,7 @@ import express from "express";
 import multer from "multer";
 import { createDb } from "./db.js";
 import { fetchWoltMenu } from "./wolt.js";
+import { MAX_NOTE_CHARS, MAX_NOTE_WORDS, countWords } from "../src/lib/notes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
@@ -48,8 +49,15 @@ function groupPhotoSlots(summaries) {
   return photoSlots;
 }
 
+function groupNotes(rows) {
+  const notes = {};
+  for (const row of rows) notes[row.itemId] = row.body;
+  return notes;
+}
+
 async function cachedPayload(cached, extra = {}) {
   const photoSlots = groupPhotoSlots(await db.listPhotoSummaries());
+  const notes = groupNotes(await db.listNotes());
   return {
     items: cached?.items || [],
     fetchedAt: cached?.fetchedAt || null,
@@ -57,6 +65,7 @@ async function cachedPayload(cached, extra = {}) {
     cached: Boolean(cached?.items?.length),
     photoItemIds: Object.keys(photoSlots),
     photoSlots,
+    notes,
     count: cached?.items?.length || 0,
     ...extra,
   };
@@ -278,6 +287,34 @@ app.delete("/api/items/:id/photos/:slot", async (req, res) => {
 app.delete("/api/items/:id/photo", async (req, res) => {
   await db.deletePhoto(req.params.id, 0);
   res.json({ ok: true, photos: await db.listItemPhotos(req.params.id) });
+});
+
+app.put("/api/items/:id/note", async (req, res) => {
+  const raw = req.body?.text;
+  if (typeof raw !== "string") {
+    res.status(400).json({ error: "חסר טקסט" });
+    return;
+  }
+  if (raw.length > MAX_NOTE_CHARS || countWords(raw) > MAX_NOTE_WORDS) {
+    res.status(400).json({ error: "אפשר לשמור עד 200 מילים" });
+    return;
+  }
+  const text = raw.trim();
+  try {
+    if (!text) {
+      await db.deleteNote(req.params.id);
+      res.json({ ok: true, text: "" });
+      return;
+    }
+    await db.saveNote({
+      itemId: req.params.id,
+      sku: typeof req.body?.sku === "string" ? req.body.sku : null,
+      body: text,
+    });
+    res.json({ ok: true, text });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "שמירת ההערה נכשלה" });
+  }
 });
 
 const distDir = path.join(__dirname, "..", "dist");
